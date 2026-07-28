@@ -13,16 +13,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,700;1,9..144,400;1,9..144,700&family=Manrope:wght@300;400;500;600;700&family=Caveat:wght@400;700&display=swap" rel="stylesheet">
 <!--
   ╔════════════════════════════════════════════════════════════╗
-  ║  MODULO DI PRENOTAZIONE — CONFIGURAZIONE FORMSPREE        ║
+  ║  PRENOTAZIONI — CONFIGURAZIONE WEB3FORMS (gratuito)       ║
   ║                                                            ║
-  ║  1. Crea un account gratuito su https://formspree.io      ║
-  ║  2. Crea un nuovo form (indirizzo: librapietrasanta@gmail) ║
-  ║  3. Copia il tuo endpoint (es. https://formspree.io/f/abc)║
-  ║  4. Sostituisci FORMSPREE_ENDPOINT qui sotto con l'URL    ║
+  ║  1. Vai su https://web3forms.com                          ║
+  ║  2. Inserisci librapietrasanta@gmail.com                  ║
+  ║  3. Apri l'email di conferma e clicca il link             ║
+  ║  4. Copia la chiave (access key) che ti arriva            ║
+  ║  5. Sostituisci TUO_ACCESS_KEY qui sotto con quella chiave║
+  ║                                                            ║
+  ║  Ogni prenotazione arriva via email a Libra con la email  ║
+  ║  del partecipante già impostata come "Rispondi a",        ║
+  ║  così basta cliccare Reply per mandare il link pagamento. ║
   ╚════════════════════════════════════════════════════════════╝
 -->
 <script>
-  var FORMSPREE_ENDPOINT = "https://formspree.io/f/SOSTITUISCI_QUI";
+  var W3F_KEY = 918c6a5b-9a01-4fe4-a0e5-948f123f94e9; // ← sostituisci con la tua chiave web3forms.com
 </script>
 <style>
 :root{
@@ -1291,42 +1296,66 @@ document.getElementById('bookingModal').addEventListener('click',function(e){if(
 // close on Escape
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeBooking();});
 
-// Form submit via fetch (Formspree)
-document.getElementById('bookingForm').addEventListener('submit',async function(e){
+// ── Prenotazione via Web3Forms (invia email automatica a Libra) ──
+document.getElementById('bookingForm').addEventListener('submit', async function(e) {
   e.preventDefault();
-  var btn=document.getElementById('submitBtn');
-  btn.disabled=true;btn.textContent='Invio in corso…';
-  var data=new FormData(this);
-  // Add subject for Formspree
-  data.append('_subject','Prenotazione: '+document.getElementById('formEventName').value);
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Invio in corso…';
 
-  if(typeof FORMSPREE_ENDPOINT==='undefined'||FORMSPREE_ENDPOINT.indexOf('SOSTITUISCI')>-1){
-    // Fallback: open mailto if Formspree not configured
-    var nome=data.get('nome')||'';
-    var email=data.get('email')||'';
-    var tel=data.get('telefono')||'—';
-    var persone=data.get('persone')||'—';
-    var note=data.get('note')||'—';
-    var evento=data.get('evento')||'—';
-    var body=encodeURIComponent('PRENOTAZIONE\n\nEvento: '+evento+'\nNome: '+nome+'\nEmail: '+email+'\nTelefono: '+tel+'\nPersone: '+persone+'\nNote: '+note);
-    window.location.href='mailto:librapietrasanta@gmail.com?subject='+encodeURIComponent('Prenotazione: '+evento)+'&body='+body;
-    document.getElementById('bookingForm').style.display='none';
-    document.getElementById('formSuccess').style.display='flex';
+  var form   = e.target;
+  var evento = document.getElementById('formEventName').value;
+  var nome   = form.nome.value.trim();
+  var email  = form.email.value.trim();
+  var tel    = form.telefono.value.trim() || '—';
+  var pers   = form.persone.value || '—';
+  var note   = form.note.value.trim() || '—';
+
+  // Se la chiave non è stata ancora configurata, mostra un avviso chiaro
+  if (!W3F_KEY || W3F_KEY === 'TUO_ACCESS_KEY') {
+    btn.disabled = false;
+    btn.textContent = 'Invia richiesta →';
+    alert('⚠️ Per attivare le prenotazioni automatiche vai su web3forms.com, inserisci la tua email e incolla la chiave nel file HTML alla variabile W3F_KEY.');
     return;
   }
 
-  try{
-    var resp=await fetch(FORMSPREE_ENDPOINT,{method:'POST',body:data,headers:{Accept:'application/json'}});
-    if(resp.ok){
-      document.getElementById('bookingForm').style.display='none';
-      document.getElementById('formSuccess').style.display='flex';
-    }else{
-      btn.disabled=false;btn.textContent='Invia richiesta →';
-      alert('Ops, qualcosa è andato storto. Scrivici su WhatsApp o via email.');
+  var payload = {
+    access_key:  W3F_KEY,
+    subject:     '🌿 Prenotazione: ' + evento,
+    from_name:   nome,
+    replyto:     email,   // ← Libra clicca "Rispondi" e va direttamente al partecipante
+    // Corpo dell'email che arriva a Libra
+    message: [
+      '📅 EVENTO: '     + evento,
+      '👤 NOME: '       + nome,
+      '📧 EMAIL: '      + email,
+      '📞 TELEFONO: '   + tel,
+      '👥 PERSONE: '    + pers,
+      '📝 NOTE: '       + note,
+      '',
+      'Rispondi a questa email per inviare il link di pagamento al partecipante.'
+    ].join('\n')
+  };
+
+  try {
+    var resp = await fetch('https://api.web3forms.com/submit', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+    var result = await resp.json();
+    if (result.success) {
+      document.getElementById('bookingForm').style.display = 'none';
+      document.getElementById('formSuccess').style.display = 'flex';
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Invia richiesta →';
+      alert('Ops, qualcosa è andato storto. Scrivici su WhatsApp: +39 349 140 8666');
     }
-  }catch(err){
-    btn.disabled=false;btn.textContent='Invia richiesta →';
-    alert('Errore di connessione. Prova a scriverci su WhatsApp.');
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Invia richiesta →';
+    alert('Errore di connessione. Scrivici su WhatsApp: +39 349 140 8666');
   }
 });
 
