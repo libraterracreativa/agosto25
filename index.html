@@ -27,7 +27,7 @@
   ╚════════════════════════════════════════════════════════════╝
 -->
 <script>
-  var W3F_KEY = 918c6a5b-9a01-4fe4-a0e5-948f123f94e9; // ← sostituisci con la tua chiave web3forms.com
+  var W3F_KEY = "918c6a5b-9a01-4fe4-a0e5-948f123f94e9";
 </script>
 <style>
 :root{
@@ -1296,66 +1296,70 @@ document.getElementById('bookingModal').addEventListener('click',function(e){if(
 // close on Escape
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeBooking();});
 
-// ── Prenotazione via Web3Forms (invia email automatica a Libra) ──
+// ── Prenotazione via Web3Forms ──
 document.getElementById('bookingForm').addEventListener('submit', async function(e) {
   e.preventDefault();
   var btn = document.getElementById('submitBtn');
   btn.disabled = true;
   btn.textContent = 'Invio in corso…';
 
-  var form   = e.target;
-  var evento = document.getElementById('formEventName').value;
-  var nome   = form.nome.value.trim();
-  var email  = form.email.value.trim();
-  var tel    = form.telefono.value.trim() || '—';
-  var pers   = form.persone.value || '—';
-  var note   = form.note.value.trim() || '—';
-
-  // Se la chiave non è stata ancora configurata, mostra un avviso chiaro
-  if (!W3F_KEY || W3F_KEY === 'TUO_ACCESS_KEY') {
-    btn.disabled = false;
-    btn.textContent = 'Invia richiesta →';
-    alert('⚠️ Per attivare le prenotazioni automatiche vai su web3forms.com, inserisci la tua email e incolla la chiave nel file HTML alla variabile W3F_KEY.');
-    return;
-  }
-
-  var payload = {
-    access_key:  W3F_KEY,
-    subject:     '🌿 Prenotazione: ' + evento,
-    from_name:   nome,
-    replyto:     email,   // ← Libra clicca "Rispondi" e va direttamente al partecipante
-    // Corpo dell'email che arriva a Libra
-    message: [
-      '📅 EVENTO: '     + evento,
-      '👤 NOME: '       + nome,
-      '📧 EMAIL: '      + email,
-      '📞 TELEFONO: '   + tel,
-      '👥 PERSONE: '    + pers,
-      '📝 NOTE: '       + note,
-      '',
-      'Rispondi a questa email per inviare il link di pagamento al partecipante.'
-    ].join('\n')
-  };
-
+  // Leggiamo i campi DENTRO il try, così se qualcosa va storto
+  // il bottone viene sempre sbloccato dal catch
   try {
+    var evento = document.getElementById('formEventName').value || '—';
+    var nome   = document.getElementById('field-nome').value.trim()    || '—';
+    var email  = document.getElementById('field-email').value.trim()   || '—';
+    var tel    = document.getElementById('field-tel').value.trim()     || '—';
+    var pers   = document.getElementById('field-persone').value        || '—';
+    var note   = document.getElementById('field-note').value.trim()    || '—';
+
+    var payload = {
+      access_key: W3F_KEY,
+      subject:    'Prenotazione: ' + evento,
+      name:       nome,
+      email:      email,
+      message: [
+        'EVENTO: '    + evento,
+        'NOME: '      + nome,
+        'EMAIL: '     + email,
+        'TELEFONO: '  + tel,
+        'PERSONE: '   + pers,
+        'NOTE: '      + note,
+        '',
+        'Rispondi a questa email per inviare il link di pagamento.'
+      ].join('\n')
+    };
+
+    // Timeout di 10 secondi per evitare che rimanga bloccato
+    var controller = new AbortController();
+    var timeout = setTimeout(function(){ controller.abort(); }, 10000);
+
     var resp = await fetch('https://api.web3forms.com/submit', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body:    JSON.stringify(payload)
+      body:    JSON.stringify(payload),
+      signal:  controller.signal
     });
+    clearTimeout(timeout);
+
     var result = await resp.json();
+
     if (result.success) {
       document.getElementById('bookingForm').style.display = 'none';
       document.getElementById('formSuccess').style.display = 'flex';
     } else {
-      btn.disabled = false;
-      btn.textContent = 'Invia richiesta →';
-      alert('Ops, qualcosa è andato storto. Scrivici su WhatsApp: +39 349 140 8666');
+      throw new Error(result.message || 'Risposta non valida');
     }
+
   } catch (err) {
     btn.disabled = false;
     btn.textContent = 'Invia richiesta →';
-    alert('Errore di connessione. Scrivici su WhatsApp: +39 349 140 8666');
+    if (err.name === 'AbortError') {
+      alert('La richiesta ha impiegato troppo. Scrivici su WhatsApp: +39 349 140 8666');
+    } else {
+      alert('Errore: ' + (err.message || 'sconosciuto') + '\nScrivici su WhatsApp: +39 349 140 8666');
+    }
+    console.error('Web3Forms error:', err);
   }
 });
 
